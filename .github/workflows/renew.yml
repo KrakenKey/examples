@@ -1,0 +1,34 @@
+name: Renew Certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      cert-id:
+        description: 'Certificate ID to renew'
+        required: true
+  schedule:
+    # Check daily at 2am UTC — the action is a no-op if the cert is not near expiry
+    - cron: '0 2 * * *'
+
+env:
+  CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Renew certificate
+        id: cert
+        uses: KrakenKey/cert-action@main
+        with:
+          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          command: renew
+          cert-id: ${{ env.CERT_ID }}
+
+      - name: Print renewal result
+        run: |
+          echo "Certificate ID: ${{ steps.cert.outputs.cert-id }}"
+          echo "Status:         ${{ steps.cert.outputs.status }}"
+          echo "Domain:         ${{ steps.cert.outputs.domain }}"
+          echo "Expires:        ${{ steps.cert.outputs.expires }}"
+          echo "Cert path:      ${{ steps.cert.outputs.cert-path }}"

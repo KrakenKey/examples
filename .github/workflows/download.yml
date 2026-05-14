@@ -1,0 +1,37 @@
+name: Download Certificate
+
+on:
+  workflow_dispatch:
+    inputs:
+      cert-id:
+        description: 'Certificate ID to download'
+        required: true
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download certificate
+        id: cert
+        uses: KrakenKey/cert-action@main
+        with:
+          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          command: download
+          cert-id: ${{ inputs.cert-id }}
+
+      - name: Print certificate details
+        run: |
+          echo "Certificate ID: ${{ steps.cert.outputs.cert-id }}"
+          echo "Status:         ${{ steps.cert.outputs.status }}"
+          echo "Domain:         ${{ steps.cert.outputs.domain }}"
+          echo "Expires:        ${{ steps.cert.outputs.expires }}"
+          echo "Cert path:      ${{ steps.cert.outputs.cert-path }}"
+
+      - name: Verify certificate file
+        run: openssl x509 -in cert.pem -noout -subject -issuer -dates
+
+      - name: Upload certificate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tls-certificate
+          path: cert.pem
