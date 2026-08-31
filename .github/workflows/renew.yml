@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Renew certificate
         id: cert
+        # Deliberately tracks @main: this scheduled run doubles as a daily
+        # canary for cert-action against production. In your own workflows,
+        # pin a release tag instead (see the other examples in this repo).
         uses: KrakenKey/cert-action@main
         with:
           api-key: ${{ secrets.KRAKENKEY_API_KEY }}
