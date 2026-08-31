@@ -7,9 +7,10 @@ on:
         description: 'Certificate ID to download'
         required: true
   schedule:
-    # Weekly read-only check that the download path works end to end.
+    # Daily read-only canary: exercises auth, API, CLI and action end to end
+    # without issuing anything, so it is free of rate limit concerns.
     # Scheduled runs fall back to the KRAKENKEY_CERT_ID repository variable.
-    - cron: '0 3 * * 1'
+    - cron: '0 3 * * *'
 
 env:
   CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}

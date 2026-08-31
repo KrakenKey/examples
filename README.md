@@ -9,8 +9,8 @@ These are not just documentation: the scheduled workflows in this repo run for r
 | Workflow | Trigger | What it shows |
 |----------|---------|---------------|
 | [Issue Certificate](.github/workflows/issue.yml) | manual | Issue a new certificate with a chosen domain, optional SANs and key type, then collect cert, key and CSR as artifacts |
-| [Download Certificate](.github/workflows/download.yml) | manual, plus weekly schedule | Fetch an existing certificate by ID, verify it with OpenSSL and upload it as an artifact |
-| [Renew Certificate](.github/workflows/renew.yml) | manual, plus daily schedule | Renew a certificate by ID. Safe to run on a schedule: renewal is a no-op until the certificate is near expiry |
+| [Download Certificate](.github/workflows/download.yml) | manual, plus daily schedule | Fetch an existing certificate by ID, verify it with OpenSSL and upload it as an artifact. The daily run is a free, read-only canary |
+| [Renew Certificate](.github/workflows/renew.yml) | manual, plus weekly schedule | Renew a certificate by ID. Weekly keeps the demo inside Let's Encrypt's limit of 5 certificates per identical identifier set per week |
 | [Deploy to Nginx](.github/workflows/deploy-nginx.yml) | manual | Issue a certificate, copy it to a server over SSH and reload Nginx |
 
 ## Setup
@@ -21,7 +21,7 @@ These are not just documentation: the scheduled workflows in this repo run for r
 
 ## Version pinning
 
-The examples pin `KrakenKey/cert-action` to a release tag (currently `v1.1.0`), which is what you should do in your own workflows. The one exception is `renew.yml`, which intentionally tracks `@main`: its daily scheduled run doubles as KrakenKey's own integration canary, exercising the action, the CLI and the production API end to end every day.
+The examples pin `KrakenKey/cert-action` to a release tag (currently `v1.1.0`), which is what you should do in your own workflows. The one exception is `renew.yml`, which intentionally tracks `@main`: its weekly scheduled run doubles as KrakenKey's own integration canary for the full renewal path, while the daily download run covers the read path.
 
 ## Reference
 
