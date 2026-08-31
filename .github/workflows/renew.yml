@@ -7,8 +7,12 @@ on:
         description: 'Certificate ID to renew'
         required: true
   schedule:
-    # Check daily at 2am UTC — the action is a no-op if the cert is not near expiry
-    - cron: '0 2 * * *'
+    # Weekly on Mondays at 2am UTC. The manual renew endpoint renews
+    # unconditionally today, and Let's Encrypt allows at most 5 certificates
+    # per exact identifier set per week (no overrides), so a daily schedule
+    # would exhaust that allowance. Revert to daily once the API gains a
+    # renewal window check and ARI support makes renewals rate-limit exempt.
+    - cron: '0 2 * * 1'
 
 env:
   CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
@@ -19,7 +23,7 @@ jobs:
     steps:
       - name: Renew certificate
         id: cert
-        # Deliberately tracks @main: this scheduled run doubles as a daily
+        # Deliberately tracks @main: this scheduled run doubles as a weekly
         # canary for cert-action against production. In your own workflows,
         # pin a release tag instead (see the other examples in this repo).
         uses: KrakenKey/cert-action@main
