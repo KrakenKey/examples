@@ -45,8 +45,10 @@ output "expires_at" {
   value = data.krakenkey_certificate.this.expires_at
 
   precondition {
-    condition     = timecmp(data.krakenkey_certificate.this.expires_at, timeadd(plantimestamp(), "${var.min_days_left * 24}h")) > 0
-    error_message = "Certificate ${var.certificate_id} expires at ${data.krakenkey_certificate.this.expires_at}, within ${var.min_days_left} days."
+    # A certificate that isn't issued has no expiry; the status check above
+    # reports that, so this one only applies to issued certificates.
+    condition     = try(timecmp(data.krakenkey_certificate.this.expires_at, timeadd(plantimestamp(), "${var.min_days_left * 24}h")) > 0, data.krakenkey_certificate.this.status != "issued")
+    error_message = "Certificate ${var.certificate_id} expires at ${coalesce(data.krakenkey_certificate.this.expires_at, "unknown")}, within ${var.min_days_left} days."
   }
 }
 
@@ -57,10 +59,10 @@ output "renewal_count" {
 # The leaf in fullchain_pem must be the same certificate as cert_pem, followed
 # by at least one intermediate.
 output "chain_length" {
-  value = length(regexall("-----BEGIN CERTIFICATE-----", data.krakenkey_certificate.this.fullchain_pem))
+  value = length(regexall("-----BEGIN CERTIFICATE-----", coalesce(data.krakenkey_certificate.this.fullchain_pem, "-")))
 
   precondition {
-    condition     = startswith(data.krakenkey_certificate.this.fullchain_pem, trimspace(data.krakenkey_certificate.this.cert_pem)) && length(regexall("-----BEGIN CERTIFICATE-----", data.krakenkey_certificate.this.fullchain_pem)) >= 2
+    condition     = try(startswith(data.krakenkey_certificate.this.fullchain_pem, trimspace(data.krakenkey_certificate.this.cert_pem)) && length(regexall("-----BEGIN CERTIFICATE-----", data.krakenkey_certificate.this.fullchain_pem)) >= 2, data.krakenkey_certificate.this.status != "issued")
     error_message = "fullchain_pem doesn't start with the leaf certificate or has no intermediates."
   }
 }
