@@ -7,11 +7,13 @@ on:
         description: 'Certificate ID to renew'
         required: true
   schedule:
-    # Weekly on Mondays at 2am UTC. The manual renew endpoint renews
-    # unconditionally today, and Let's Encrypt allows at most 5 certificates
-    # per exact identifier set per week (no overrides), so a daily schedule
-    # would exhaust that allowance. Revert to daily once the API gains a
-    # renewal window check and ARI support makes renewals rate-limit exempt.
+    # Every day except Monday: renew with if-due, which only renews once the
+    # certificate is inside the plan's renewal window and otherwise just
+    # downloads it. This is the pattern to copy: safe to run daily.
+    - cron: '0 2 * * 0,2-6'
+    # Monday: renew unconditionally, so KrakenKey's full renewal path is
+    # exercised against production every week. Let's Encrypt allows 5
+    # certificates per identical set of names per week, so keep this weekly.
     - cron: '0 2 * * 1'
 
 env:
@@ -23,19 +25,23 @@ jobs:
     steps:
       - name: Renew certificate
         id: cert
-        # Deliberately tracks @main: this scheduled run doubles as a weekly
-        # canary for cert-action against production. In your own workflows,
+        # Deliberately tracks @main: the scheduled runs double as a canary for
+        # cert-action against production. In your own workflows,
         # pin a release tag instead (see the other examples in this repo).
         uses: KrakenKey/cert-action@main
         with:
           api-key: ${{ secrets.KRAKENKEY_API_KEY }}
           command: renew
           cert-id: ${{ env.CERT_ID }}
+          # Only the daily schedule checks the renewal window. Manual runs and
+          # the Monday canary renew unconditionally.
+          if-due: ${{ github.event.schedule == '0 2 * * 0,2-6' }}
 
       - name: Print renewal result
         run: |
           echo "Certificate ID: ${{ steps.cert.outputs.cert-id }}"
           echo "Status:         ${{ steps.cert.outputs.status }}"
+          echo "Renewed:        ${{ steps.cert.outputs.renewed }}"
           echo "Domain:         ${{ steps.cert.outputs.domain }}"
           echo "Expires:        ${{ steps.cert.outputs.expires }}"
           echo "Cert path:      ${{ steps.cert.outputs.cert-path }}"

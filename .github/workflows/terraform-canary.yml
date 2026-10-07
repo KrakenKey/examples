@@ -1,0 +1,43 @@
+name: Terraform Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      cert-id:
+        description: 'Certificate ID to check'
+        required: false
+  schedule:
+    # Daily, after the Download Certificate canary. Read-only: the config in
+    # terraform/canary only uses data sources.
+    - cron: '30 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/canary
+    env:
+      # Prefer a key with only the certs:read scope.
+      KK_API_KEY: ${{ secrets.KRAKENKEY_READONLY_API_KEY || secrets.KRAKENKEY_API_KEY }}
+      TF_VAR_certificate_id: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
+      TF_IN_AUTOMATION: 'true'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '1.14.*'
+          terraform_wrapper: false
+
+      # Installs krakenkey/krakenkey from the Terraform Registry and checks its
+      # signature.
+      - run: terraform init -input=false
+
+      # Reads the certificate and fails if it isn't issued, expires within 14
+      # days, or has a broken chain. Nothing is created; state stays on the
+      # runner.
+      - run: terraform apply -input=false -auto-approve
