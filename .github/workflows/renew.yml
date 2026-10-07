@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       cert-id:
-        description: 'Certificate ID to renew'
-        required: true
+        description: 'Certificate ID to renew (default: the KRAKENKEY_CERT_ID variable)'
+        required: false
+      force:
+        description: 'Renew even if the certificate is not inside its renewal window'
+        type: boolean
+        default: false
   schedule:
     # Every day except Monday: renew with if-due, which only renews once the
     # certificate is inside the plan's renewal window and otherwise just
@@ -19,8 +23,12 @@ on:
 env:
   CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
 
+# id-token: write lets the action sign in with GitHub OIDC instead of a stored
+# API key. KrakenKey trusts this repository's main branch for certificate 7
+# only, with the certs:read and certs:renew scopes.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   renew:
@@ -33,12 +41,13 @@ jobs:
         # pin a release tag instead (see the other examples in this repo).
         uses: KrakenKey/cert-action@main
         with:
-          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          # No api-key: the action exchanges the job's GitHub OIDC token for
+          # a 15-minute KrakenKey key.
           command: renew
           cert-id: ${{ env.CERT_ID }}
-          # Only the daily schedule checks the renewal window. Manual runs and
-          # the Monday canary renew unconditionally.
-          if-due: ${{ github.event.schedule == '0 2 * * 0,2-6' }}
+          # The Monday canary and manual runs with force renew unconditionally;
+          # everything else only renews when due.
+          if-due: ${{ github.event.schedule != '0 2 * * 1' && !inputs.force }}
 
       - name: Print renewal result
         run: |

@@ -33,12 +33,20 @@ The [`krakenkey/krakenkey`](https://registry.terraform.io/providers/KrakenKey/kr
 
 ## Setup
 
-1. [Create a KrakenKey API key](https://app.krakenkey.io/dashboard/api-keys) and add it as a repository secret named `KRAKENKEY_API_KEY`.
+1. For the issue and Nginx workflows, [create a KrakenKey API key](https://app.krakenkey.io/dashboard/api-keys) and add it as a repository secret named `KRAKENKEY_API_KEY`. The download and renew workflows don't need one: they sign in with GitHub OIDC (below).
 2. For the scheduled runs, add a repository variable `KRAKENKEY_CERT_ID` with the ID of the certificate to operate on. Manual runs take the ID as an input instead.
 3. Optionally add a second key with only the `certs:read` scope as `KRAKENKEY_READONLY_API_KEY`. The Terraform canary uses it when present, so the daily check can't change anything.
 4. The Nginx workflows additionally need a `DEPLOY_SSH_KEY` secret and `DEPLOY_HOST`, `DEPLOY_KNOWN_HOSTS` and `TLS_NAME` variables; the comments at the top of each workflow list them.
 
-The GitHub Action can also authenticate with GitHub OIDC instead of a stored key: leave `api-key` empty, grant `id-token: write`, and trust the repository in KrakenKey. See the [cert-action documentation](https://github.com/KrakenKey/cert-action#without-a-stored-api-key-github-oidc).
+### Without a stored API key
+
+[Download](.github/workflows/download.yml) and [Renew](.github/workflows/renew.yml) authenticate with GitHub OIDC: they leave `api-key` empty and grant `id-token: write`, and the action exchanges the job's OIDC token for a KrakenKey key that lasts 15 minutes. To do the same in your repository, add a trust policy in the KrakenKey dashboard with:
+
+- the repository (`owner/name`) and its numeric ID, so a recreated repository with the same name doesn't match;
+- allowed refs, for example `refs/heads/main`, so workflows on other branches are refused;
+- only the scopes the workflow needs (`certs:read` to download, plus `certs:renew` to renew) and, optionally, the certificate IDs it may touch.
+
+See the [cert-action documentation](https://github.com/KrakenKey/cert-action#without-a-stored-api-key-github-oidc) for details.
 
 ## Version pinning
 

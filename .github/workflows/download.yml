@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       cert-id:
-        description: 'Certificate ID to download'
-        required: true
+        description: 'Certificate ID to download (default: the KRAKENKEY_CERT_ID variable)'
+        required: false
   schedule:
     # Daily read-only canary: exercises auth, API, CLI and action end to end
     # without issuing anything, so it is free of rate limit concerns.
@@ -15,8 +15,12 @@ on:
 env:
   CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
 
+# id-token: write lets the action sign in with GitHub OIDC instead of a stored
+# API key. KrakenKey trusts this repository's main branch for certificate 7
+# only, with the certs:read and certs:renew scopes.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   download:
@@ -26,7 +30,7 @@ jobs:
         id: cert
         uses: KrakenKey/cert-action@v1.4.0
         with:
-          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          # No api-key: signs in with GitHub OIDC (see permissions above).
           command: download
           cert-id: ${{ env.CERT_ID }}
 
