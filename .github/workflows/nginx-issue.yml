@@ -1,0 +1,77 @@
+name: Nginx - Issue Certificate
+
+# Step 1 of 2: run once by hand. Issues the certificate on the runner and
+# installs the key and full chain on the server over SSH. Then save the
+# certificate ID from the run summary as the repository variable KK_CERT_ID
+# and use nginx-renew.yml from then on.
+#
+# Needs:
+#   secret   KRAKENKEY_API_KEY
+#   secret   DEPLOY_SSH_KEY       private key for the deploy user
+#   variable DEPLOY_HOST          the server's own address, e.g. web1.example.com
+#   variable DEPLOY_KNOWN_HOSTS   output of `ssh-keyscan <host>`, checked against the server
+#   variable DEPLOY_USER          optional, default "deploy"; owns /srv/tls
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Primary domain, e.g. example.com'
+        required: true
+      san:
+        description: 'Additional names, comma-separated, e.g. www.example.com'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Issue certificate
+        id: cert
+        uses: KrakenKey/cert-action@v1.4.0
+        with:
+          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          domain: ${{ inputs.domain }}
+          san: ${{ inputs.san }}
+          # nginx-renew.yml is the only thing that renews this certificate,
+          # so there's one place to look when something goes wrong.
+          auto-renew: 'false'
+          # The runner's temp directory, not the workspace, so no later step
+          # can upload the key as an artifact by accident.
+          key-path: ${{ runner.temp }}/tls.key
+          fullchain-path: ${{ runner.temp }}/tls.fullchain.pem
+
+      - name: Install on the server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+          NAME: ${{ inputs.domain }}
+          KEY: ${{ steps.cert.outputs.key-path }}
+          FULLCHAIN: ${{ steps.cert.outputs.fullchain-path }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          ssh() { command ssh -i ~/.ssh/deploy "$DEPLOY_USER@$HOST" "$@"; }
+
+          ssh "umask 077; cat > /srv/tls/$NAME.key.new" < "$KEY"
+          ssh "umask 022; cat > /srv/tls/$NAME.fullchain.pem.new" < "$FULLCHAIN"
+          ssh "cd /srv/tls && mv $NAME.key.new $NAME.key && mv $NAME.fullchain.pem.new $NAME.fullchain.pem"
+          rm -f "$KEY"
+
+      - name: Record the certificate ID
+        env:
+          CERT_ID: ${{ steps.cert.outputs.cert-id }}
+        run: |
+          {
+            echo "Certificate ID: \`$CERT_ID\`"
+            echo
+            echo "Save it as the repository variable \`KK_CERT_ID\`, point nginx at"
+            echo "\`/srv/tls/${{ inputs.domain }}.fullchain.pem\` and \`/srv/tls/${{ inputs.domain }}.key\`, and reload it."
+          } >> "$GITHUB_STEP_SUMMARY"

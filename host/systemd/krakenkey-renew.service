@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew the KrakenKey certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# KK_API_KEY=... (root-only, mode 0600)
+EnvironmentFile=/etc/krakenkey/env
+EnvironmentFile=/etc/krakenkey/renew.env
+ExecStart=/usr/local/bin/krakenkey-renew
+TimeoutStartSec=30min
