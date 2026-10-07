@@ -1,0 +1,75 @@
+name: Nginx - Renew and Deploy
+
+# Step 2 of 2: renew the certificate from nginx-issue.yml when it's due, and
+# deploy it whenever the server is serving an older one. Most days nothing
+# happens. Enable the schedule below in your own repository; it's off here
+# because this repository has no server to deploy to.
+#
+# Needs the same secrets and variables as nginx-issue.yml, plus:
+#   variable KK_CERT_ID   the certificate ID from nginx-issue.yml
+#   variable TLS_NAME     the primary domain, used in the file names under /srv/tls
+#
+# The deploy user needs a sudoers entry for exactly these commands:
+#   deploy ALL=(root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '17 6 * * *'
+
+permissions:
+  contents: read
+
+# A manual run and a scheduled one never renew at the same time.
+concurrency: nginx-renew
+
+jobs:
+  renew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Renew if due
+        id: cert
+        uses: KrakenKey/cert-action@v1.4.0
+        with:
+          api-key: ${{ secrets.KRAKENKEY_API_KEY }}
+          command: renew
+          cert-id: ${{ vars.KK_CERT_ID }}
+          # Renews only inside the plan's renewal window. Outside it, the action
+          # still downloads the current certificate and sets renewed=false.
+          if-due: 'true'
+          poll-timeout: 20m
+          fullchain-path: ${{ runner.temp }}/tls.fullchain.pem
+
+      - name: Deploy if the server has an older certificate
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'deploy' }}
+          NAME: ${{ vars.TLS_NAME }}
+          FULLCHAIN: ${{ steps.cert.outputs.fullchain-path }}
+          RENEWED: ${{ steps.cert.outputs.renewed }}
+          EXPIRES: ${{ steps.cert.outputs.expires }}
+        run: |
+          # Compare with what the server actually serves, so a failed deploy
+          # or a restored old file is fixed on the next run. HOST must reach
+          # the server itself, not a load balancer or CDN in front of it.
+          fp() { openssl x509 -noout -fingerprint -sha256; }
+          new=$(fp < "$FULLCHAIN")
+          live=$(openssl s_client -connect "$HOST:443" -servername "$NAME" </dev/null 2>/dev/null | fp || true)
+          if [ "$new" = "$live" ]; then
+            echo "Server already serves this certificate (renewed=$RENEWED)"
+            exit 0
+          fi
+
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          ssh() { command ssh -i ~/.ssh/deploy "$DEPLOY_USER@$HOST" "$@"; }
+
+          # Renewal reuses the original CSR, so only the certificate moves; the
+          # key already on the server still matches.
+          ssh "umask 022; cat > /srv/tls/$NAME.fullchain.pem.new" < "$FULLCHAIN"
+          ssh "mv /srv/tls/$NAME.fullchain.pem.new /srv/tls/$NAME.fullchain.pem \
+            && sudo /usr/sbin/nginx -t && sudo /usr/bin/systemctl reload nginx"
+          echo "Deployed certificate expiring $EXPIRES"

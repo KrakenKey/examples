@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Renew a KrakenKey certificate when it's due, then install it and reload the
+# proxy. Run daily by krakenkey-renew.timer. Safe to run more often: it only
+# renews inside the plan's renewal window and only installs a certificate that
+# expires later than the live one, matches the key and covers every name.
+#
+# Settings come from /etc/krakenkey/renew.env (see renew.env.example):
+#   KK_NAME    file name stem, e.g. example.com
+#   KK_HOSTS   names the certificate must cover, space-separated
+#   KK_PROXY   nginx, haproxy or none
+#   KK_DIR     where the files live (default /etc/ssl/krakenkey)
+# and KK_API_KEY from /etc/krakenkey/env.
+set -euo pipefail
+
+: "${KK_NAME:?set KK_NAME}" "${KK_HOSTS:?set KK_HOSTS}"
+DIR=${KK_DIR:-/etc/ssl/krakenkey}
+PROXY=${KK_PROXY:-nginx}
+read -r -a HOSTS <<<"$KK_HOSTS"
+CRT="$DIR/$KK_NAME.fullchain.pem"
+KEY="$DIR/$KK_NAME.key"
+ID=$(<"$DIR/$KK_NAME.id")
+
+export KK_OUTPUT=json
+log() { echo "[krakenkey-renew] $*"; }
+enddate() { date -d "$(openssl x509 -noout -enddate -in "$1" | cut -d= -f2)" +%s; }
+
+# Work on the same filesystem so the final mv is atomic.
+WORK=$(mktemp -d "$DIR/.work.XXXXXX")
+trap 'rm -rf "$WORK"' EXIT
+
+status=$(krakenkey cert show "$ID" | jq -r .status)
+case "$status" in
+  pending|issuing|renewing) log "certificate $ID is $status; trying again next run"; exit 0 ;;
+  issued) ;;
+  *) log "certificate $ID is $status; see krakenkey cert show $ID"; exit 1 ;;
+esac
+
+# Renews only inside the plan's renewal window; otherwise a no-op.
+(cd "$WORK" && krakenkey cert renew "$ID" --if-due --wait --poll-timeout 20m >/dev/null)
+krakenkey cert download "$ID" --format fullchain --out "$WORK/new.pem" >/dev/null
+
+if (( $(enddate "$WORK/new.pem") <= $(enddate "$CRT") )); then
+  log "up to date; expires $(openssl x509 -noout -enddate -in "$CRT" | cut -d= -f2)"
+  exit 0
+fi
+
+[[ "$(openssl x509 -noout -pubkey -in "$WORK/new.pem")" == "$(openssl pkey -pubout -in "$KEY")" ]] \
+  || { log "new certificate doesn't match the key"; exit 1; }
+for h in "${HOSTS[@]}"; do
+  openssl x509 -noout -checkhost "$h" -in "$WORK/new.pem" | grep -q 'does match' \
+    || { log "new certificate doesn't cover $h"; exit 1; }
+done
+
+cp -p "$CRT" "$CRT.prev"
+chmod 0644 "$WORK/new.pem"
+mv "$WORK/new.pem" "$CRT"
+log "installed certificate expiring $(openssl x509 -noout -enddate -in "$CRT" | cut -d= -f2)"
+
+case "$PROXY" in
+  nginx)
+    nginx -t && systemctl reload nginx ;;
+  haproxy)
+    ( umask 077; cat "$CRT" "$KEY" > "$WORK/haproxy.pem" )
+    mv "$WORK/haproxy.pem" "/etc/haproxy/certs/$KK_NAME.pem"
+    haproxy -c -f /etc/haproxy/haproxy.cfg && systemctl reload haproxy ;;
+  none) ;;
+  *) log "unknown KK_PROXY '$PROXY'"; exit 1 ;;
+esac

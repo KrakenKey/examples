@@ -1,0 +1,33 @@
+name: Host Renewal Test
+
+on:
+  pull_request:
+    paths:
+      - 'host/**'
+      - '.github/workflows/host-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'host/**'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: shellcheck host/krakenkey-renew host/test/run.sh
+
+      # verify checks that ExecStart exists, so install the script first.
+      - name: Verify systemd units
+        run: |
+          sudo install -m 0755 host/krakenkey-renew /usr/local/bin/krakenkey-renew
+          systemd-analyze verify host/systemd/krakenkey-renew.service host/systemd/krakenkey-renew.timer
+
+      # Runs the script against a fake krakenkey CLI and a throwaway CA.
+      - name: Test the renewal script
+        run: bash host/test/run.sh
