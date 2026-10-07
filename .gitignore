@@ -1,0 +1,10 @@
+# Terraform working files and state
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+crash.log
+
+# Not committed here so the canary always picks up the newest provider
+# release within ~> 0.1. Commit the lock file in your own repositories.
+.terraform.lock.hcl

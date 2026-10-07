@@ -1,0 +1,3 @@
+domain             = "example.com"
+dns_names          = ["example.com", "www.example.com"]
+cloudflare_zone_id = "0123456789abcdef0123456789abcdef"

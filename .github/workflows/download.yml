@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Download certificate
         id: cert
-        uses: KrakenKey/cert-action@v1.1.0
+        uses: KrakenKey/cert-action@v1.4.0
         with:
           api-key: ${{ secrets.KRAKENKEY_API_KEY }}
           command: download
@@ -35,8 +35,10 @@ jobs:
           echo "Expires:        ${{ steps.cert.outputs.expires }}"
           echo "Cert path:      ${{ steps.cert.outputs.cert-path }}"
 
-      - name: Verify certificate file
-        run: openssl x509 -in cert.pem -noout -subject -issuer -dates
+      - name: Verify certificate and chain
+        run: |
+          openssl x509 -in cert.pem -noout -subject -issuer -dates
+          openssl verify -untrusted chain.pem cert.pem
 
       - name: Upload certificate artifact
         uses: actions/upload-artifact@v4

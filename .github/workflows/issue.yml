@@ -27,7 +27,7 @@ jobs:
     steps:
       - name: Issue TLS certificate
         id: cert
-        uses: KrakenKey/cert-action@v1.1.0
+        uses: KrakenKey/cert-action@v1.4.0
         with:
           api-key: ${{ secrets.KRAKENKEY_API_KEY }}
           command: issue
@@ -44,14 +44,18 @@ jobs:
           echo "Expires:        ${{ steps.cert.outputs.expires }}"
           echo "Fingerprint:    ${{ steps.cert.outputs.fingerprint }}"
           echo "Key type:       ${{ steps.cert.outputs.key-type }}"
-          echo "Cert path:      ${{ steps.cert.outputs.cert-path }}"
-          echo "Key path:       ${{ steps.cert.outputs.key-path }}"
+          echo "Fullchain path: ${{ steps.cert.outputs.fullchain-path }}"
 
+      # The private key (key.pem) stays on the runner and is discarded with it.
+      # Never upload it as an artifact: anyone who can read the repository can
+      # download artifacts. In a real workflow, write it straight to a secret
+      # store or deploy it to the server in this job (see deploy-nginx.yml).
       - name: Upload certificate artifacts
         uses: actions/upload-artifact@v4
         with:
           name: tls-certificate
           path: |
             cert.pem
-            key.pem
+            chain.pem
+            fullchain.pem
             csr.pem
