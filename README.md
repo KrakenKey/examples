@@ -42,3 +42,7 @@ The examples pin `KrakenKey/cert-action` to a release tag (currently `v1.4.0`) a
 - [cert-action](https://github.com/KrakenKey/cert-action): all inputs and outputs
 - [Terraform provider docs](https://registry.terraform.io/providers/KrakenKey/krakenkey/latest/docs)
 - [KrakenKey CLI](https://github.com/KrakenKey/cli), if you prefer scripting against the API directly
+
+## License
+
+[MIT No Attribution](LICENSE). Copy any workflow or configuration into your own repository without keeping a notice.
