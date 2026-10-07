@@ -19,6 +19,9 @@ on:
 env:
   CERT_ID: ${{ inputs.cert-id || vars.KRAKENKEY_CERT_ID }}
 
+permissions:
+  contents: read
+
 jobs:
   renew:
     runs-on: ubuntu-latest
